@@ -331,7 +331,17 @@ export default function App() {
         <header className="topbar">
           <div>
             <p className="content-kicker space-kicker">只属于两个人的地方</p>
-            <h1>{space.name}</h1>
+            <div className="space-title-line">
+              <h1>{space.name}</h1>
+              <button
+                className="space-name-edit"
+                type="button"
+                onClick={() => setDialog("space-settings")}
+                aria-label="修改空间名称"
+              >
+                <Pencil />
+              </button>
+            </div>
           </div>
           <div className="top-actions">
             <button className="avatar-stack" aria-label="查看成员">
@@ -350,7 +360,7 @@ export default function App() {
             letter={latestLetter}
             hasPartner={hasPartner}
             onOpenDialog={setDialog}
-            onEditRelationship={() => setDialog("relationship")}
+            onEditRelationship={() => setDialog("space-settings")}
             onOpenLetter={openLetter}
             onNavigate={setActiveView}
           />
@@ -391,7 +401,7 @@ export default function App() {
       {notice && <button className="notice" onClick={() => setNotice("")}>{notice}</button>}
 
       {dialog === "memory" && <MemoryDialog spaceId={space.id} onClose={() => setDialog(null)} onSuccess={refreshDashboard} />}
-      {dialog === "relationship" && <RelationshipDateDialog space={space} onClose={() => setDialog(null)} onSuccess={refreshDashboard} />}
+      {dialog === "space-settings" && <SpaceSettingsDialog space={space} onClose={() => setDialog(null)} onSuccess={refreshDashboard} />}
       {dialog && typeof dialog === "object" && dialog.type === "memory" && (
         <MemoryDialog spaceId={space.id} memory={dialog.memory} onClose={() => setDialog(null)} onSuccess={refreshDashboard} />
       )}
@@ -871,7 +881,8 @@ function MemoryDialog({ spaceId, memory, onClose, onSuccess }) {
   );
 }
 
-function RelationshipDateDialog({ space, onClose, onSuccess }) {
+function SpaceSettingsDialog({ space, onClose, onSuccess }) {
+  const [name, setName] = useState(space.name);
   const [relationshipStartedOn, setRelationshipStartedOn] = useState(space.relationshipStartedOn);
   const [saving, setSaving] = useState(false);
 
@@ -881,10 +892,10 @@ function RelationshipDateDialog({ space, onClose, onSuccess }) {
     try {
       const updatedSpace = await apiJson(`/spaces/${space.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ relationshipStartedOn }),
+        body: JSON.stringify({ name: name.trim(), relationshipStartedOn }),
       });
       onClose();
-      await onSuccess("关系开始日期已更新", { type: "space-updated", space: updatedSpace });
+      await onSuccess("空间设置已更新", { type: "space-updated", space: updatedSpace });
     } catch (requestError) {
       onSuccess(requestError.message);
     } finally {
@@ -893,10 +904,11 @@ function RelationshipDateDialog({ space, onClose, onSuccess }) {
   }
 
   return (
-    <Dialog title="修改关系开始日期" onClose={onClose}>
+    <Dialog title="空间设置" onClose={onClose}>
       <form className="form" onSubmit={submit}>
+        <label>空间名称<input value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：ABC2的日子" maxLength="80" required /></label>
         <label>关系开始日期<input type="date" value={relationshipStartedOn} onChange={(event) => setRelationshipStartedOn(event.target.value)} required /></label>
-        <button className="submit-button" disabled={saving}>{saving ? "正在保存..." : "保存日期"}</button>
+        <button className="submit-button" disabled={saving}>{saving ? "正在保存..." : "保存设置"}</button>
       </form>
     </Dialog>
   );

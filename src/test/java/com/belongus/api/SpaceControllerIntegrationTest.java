@@ -82,11 +82,15 @@ class SpaceControllerIntegrationTest {
         ResponseEntity<CoupleSpaceController.SpaceSummary> updatedSpace = restTemplate.exchange(
                 "/api/spaces/" + spaceId,
                 HttpMethod.PATCH,
-                jsonEntityWithCookie(Map.of("relationshipStartedOn", "2026-08-01"), cookieValue),
+                jsonEntityWithCookie(Map.of(
+                        "name", "修改后的空间",
+                        "relationshipStartedOn", "2026-08-01"
+                ), cookieValue),
                 CoupleSpaceController.SpaceSummary.class
         );
         assertThat(updatedSpace.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(updatedSpace.getBody()).isNotNull();
+        assertThat(updatedSpace.getBody().name()).isEqualTo("修改后的空间");
         assertThat(updatedSpace.getBody().relationshipStartedOn().toString()).isEqualTo("2026-08-01");
 
         ResponseEntity<SpaceController.MemoryResponse> updatedMemory = restTemplate.exchange(

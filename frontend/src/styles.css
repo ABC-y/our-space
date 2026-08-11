@@ -51,6 +51,42 @@ button {
   align-items: center;
 }
 
+.space-title-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.space-title-line h1 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.space-name-edit {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid #dedbd7;
+  border-radius: 50%;
+  color: #777984;
+  background: #fffdf8;
+}
+
+.space-name-edit:hover {
+  border-color: #efa19a;
+  color: #e65f5b;
+  background: #fff6ef;
+}
+
+.space-name-edit svg {
+  width: 13px;
+  height: 13px;
+}
+
 .eyebrow {
   margin: 0 0 5px;
   color: #ee665f;

@@ -115,13 +115,16 @@ public class CoupleSpaceController {
 
     @PatchMapping("/{spaceId}")
     @Transactional
-    public SpaceSummary updateRelationshipStartedOn(
+    public SpaceSummary updateSpace(
             @PathVariable Long spaceId,
             @Valid @RequestBody UpdateRelationshipStartedOnRequest request,
             HttpServletRequest servletRequest
     ) {
         AppUser user = authService.requireUser(servletRequest);
         CoupleSpace space = requireMemberSpace(spaceId, user);
+        if (request.name() != null && !request.name().isBlank()) {
+            space.setName(request.name().trim());
+        }
         space.setRelationshipStartedOn(request.relationshipStartedOn());
         return toSummary(spaceRepository.save(space));
     }
