@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: belong-us
+  datasource:
+    url: jdbc:h2:mem:belongus;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+server:
+  port: ${PORT:8080}
+
+app:
+  storage:
+    location: uploads
+  auth:
+    cookie-secure: false
+  cors:
+    allowed-origin-patterns: http://localhost:5173,http://127.0.0.1:5173,http://192.168.*.*:5173,http://10.*.*.*:5173

@@ -1,0 +1,21 @@
+spring:
+  h2:
+    console:
+      enabled: false
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/belong_us?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:change-me}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+app:
+  storage:
+    location: ${STORAGE_LOCATION:uploads}
+  auth:
+    cookie-secure: ${COOKIE_SECURE:true}
+  cors:
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:https://your-domain.example}

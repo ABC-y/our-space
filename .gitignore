@@ -1,0 +1,10 @@
+target/
+.m2/
+uploads/
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+.env.production
+.idea/
+*.iml
+*.log
