@@ -10,6 +10,8 @@ public interface SpaceMemberRepository extends JpaRepository<SpaceMember, Long> 
 
     long countBySpaceId(Long spaceId);
 
+    long deleteBySpaceIdAndUserId(Long spaceId, Long userId);
+
     List<SpaceMember> findBySpaceIdOrderByJoinedAtAsc(Long spaceId);
 
     List<SpaceMember> findByUserIdOrderByJoinedAtDesc(Long userId);

@@ -10,4 +10,6 @@ public interface MemoryRepository extends JpaRepository<Memory, Long> {
     List<Memory> findBySpaceIdOrderByOccurredOnDescCreatedAtDesc(Long spaceId);
 
     Optional<Memory> findFirstByImageUrl(String imageUrl);
+
+    boolean existsByImageUrl(String imageUrl);
 }

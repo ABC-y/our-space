@@ -37,16 +37,18 @@ Railway 的 MySQL 和持久化磁盘通常属于付费云资源。创建资源�
 
 ### 私有仓库在 Railway 中搜不到怎么办
 
-不要为了让 Railway 搜到仓库而长期将项目设为公开。请按下面步骤授权 Railway 访问这个私有仓库：
+不要为了让 Railway 搜到仓库而长期将项目设为公开。不要在 GitHub Marketplace 搜索 “Railway Deploy”，那些是第三方 GitHub Actions，并不是 Railway 的仓库授权应用。
 
-1. 在 GitHub 右上角头像中进入 **Settings**。
-2. 进入 **Applications**，再进入 **Installed GitHub Apps**。
-3. 找到 **Railway**，点击右侧的 **Configure**。
-4. 在 Repository access 中选择 **Only select repositories**。
-5. 选中 `our-space`，保存。
-6. 回到 Railway 的项目画布，在后端服务的 **Settings** 中找到 **Service Source**，点击 **Connect Repo**，重新选择 `our-space`。
+请从 Railway 发起授权：
 
-完成后可以把 GitHub 仓库重新改回 **Private**。如果 Railway 已经成功连接了仓库，改回私有不会影响已连接的服务，只要 Railway App 仍有该仓库的访问权限。
+1. 回到 Railway 项目画布，点击 `our-space` 后端服务卡片。
+2. 进入该服务自己的 **Settings**，找到 **Service Source**。
+3. 点击 **Connect Repo**，或点击显示的 GitHub 仓库名称后选择更换/重新连接仓库。
+4. Railway 会要求连接 GitHub，或显示配置 Railway App 的链接；点击它。
+5. GitHub 授权页面中选择 **Only select repositories**，勾选 `our-space`，然后确认安装/授权。
+6. 回到 Railway，刷新仓库列表并选择 `our-space`。
+
+如果该服务已经连接的是公开仓库，也可以暂时继续部署。完成 Railway App 授权后，再到 GitHub 将仓库改回 **Private**。只要 Railway App 仍有该仓库的访问权限，已连接服务会继续自动部署。
 
 ## 1. 将项目上传到 GitHub
 
@@ -99,12 +101,7 @@ git config --global user.email "你的邮箱@example.com"
 4. 如果 Railway 要求 GitHub 权限，只授权这个仓库即可。
 5. 回到 Railway 项目画布，点击代表 `our-space` 的服务卡片，再进入这个服务自己的 **Settings**。不要点击项目级别的齿轮设置。
 6. 不需要手动寻找或填写“构建设置”。仓库根目录已经有名称完全正确的 `Dockerfile`，并且项目根目录的 `railway.json` 已指定 Dockerfile 构建和健康检查。
-7. 打开该服务的 **Deployments**，查看最新部署日志。正确时会出现：
-
-```text
-Using detected Dockerfile!
-```
-
+7. 打开该服务的 **Deployments**，查看最新部署日志。Railway 新版界面不一定会显示 `Using detected Dockerfile!`；只要日志中出现 Maven 的 `mvn package -DskipTests`，并在后面出现 Java 的 `java -jar /app/app.jar` 或 Spring Boot 启动日志，就说明 Dockerfile 正在被使用。
 8. 不需要填写 Start Command，项目中的 Dockerfile 已经定义了启动 Java 的方式。
 9. 如果 Railway 允许选择部署地区，请选择你们两个人都较近的地区。对于亚洲用户，优先选择后台提供的亚洲或亚太地区。
 
@@ -112,15 +109,18 @@ Using detected Dockerfile!
 
 ### 为照片添加持久化磁盘
 
-1. 在 Java 服务的 **Settings** 中找到 **Volumes**。
-2. 点击 **Add Volume**。
-3. Mount Path（挂载路径）填写：
+Railway 当前界面可能不会在服务的 Settings 页面直接显示 Volumes。请从项目画布创建：
+
+1. 点击 Java 服务面板右上角的 `X`，回到项目画布。
+2. 在画布的空白处点击鼠标右键，选择 **Volume**。也可以打开 Railway 的命令面板后搜索 `Volume`。
+3. 在弹窗中选择要连接的服务：`our-space`。
+4. Mount Path（挂载路径）填写：
 
 ```text
 /data
 ```
 
-4. 保存。
+5. 点击 Add / Create 保存。
 
 项目会把上传照片放在 `/data/uploads`。因为 `/data` 是 Railway 的持久化磁盘，正常重新部署后照片不会被删除。
 
@@ -162,7 +162,7 @@ https://belong-us-production-abcd.up.railway.app
 4. 在浏览器打开：
 
 ```text
-https://你的Railway域名.up.railway.app/api/health
+https://our-space-production-e8a8.up.railway.app/api/health
 ```
 
 正确时会显示：
@@ -214,7 +214,8 @@ git push
 frontend
 ```
 
-6. 确认构建配置如下：
+6. `Application Preset` 可能会短暂显示为灰色加载状态。Vercel 会从 `frontend/package.json` 自动识别 Vite，不需要手动点击或选择。等待十几秒后再展开 **Build and Output Settings**。
+7. Vercel 自动识别 Vite 后会自动配置构建和输出目录。若展开后可编辑，确认或填写：
 
 ```text
 Framework Preset：Vite
@@ -223,12 +224,12 @@ Build Command：npm run build
 Output Directory：dist
 ```
 
-7. Environment Variables（环境变量）保持为空。
-8. 点击 **Deploy**。
-9. 部署完成后，点击 **Visit**，复制稳定的网址，格式类似：
+8. Environment Variables（环境变量）保持为空。
+9. 点击 **Deploy**。
+10. 部署完成后，点击 **Visit**，复制稳定的网址，格式类似：
 
 ```text
-https://belong-us.vercel.app
+https://our-space-pearl-beta.vercel.app/
 ```
 
 ### 将 CORS 收紧为真实网页地址
@@ -246,7 +247,7 @@ https://*.vercel.app
 改为你的真实 Vercel 网址，例如：
 
 ```text
-https://belong-us.vercel.app
+https://our-space-pearl-beta.vercel.app/
 ```
 
 4. Railway 会因变量修改而重新部署，等待它再次变为成功状态。

@@ -11,6 +11,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -70,7 +71,8 @@ public class CoupleSpaceController {
                 nextInviteCode()
         ));
         memberRepository.save(new SpaceMember(space, user));
-        return toSummary(space);
+        syncMemberNames(space);
+        return toSummary(spaceRepository.save(space));
     }
 
     @PostMapping("/join")
@@ -93,8 +95,22 @@ public class CoupleSpaceController {
         }
 
         memberRepository.save(new SpaceMember(space, user));
-        space.setMemberTwoName(user.getDisplayName());
+        syncMemberNames(space);
         return toSummary(spaceRepository.save(space));
+    }
+
+    @DeleteMapping("/{spaceId}/members/me")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Transactional
+    public void leave(
+            @PathVariable Long spaceId,
+            HttpServletRequest servletRequest
+    ) {
+        AppUser user = authService.requireUser(servletRequest);
+        CoupleSpace space = requireMemberSpace(spaceId, user);
+        memberRepository.deleteBySpaceIdAndUserId(spaceId, user.getId());
+        syncMemberNames(space);
+        spaceRepository.save(space);
     }
 
     @PatchMapping("/{spaceId}")
@@ -115,6 +131,17 @@ public class CoupleSpaceController {
                 .map(member -> new MemberResponse(member.getUser().getId(), member.getUser().getDisplayName()))
                 .toList();
         return new SpaceSummary(space.getId(), space.getName(), space.getInviteCode(), space.getRelationshipStartedOn(), members);
+    }
+
+    private void syncMemberNames(CoupleSpace space) {
+        List<SpaceMember> members = memberRepository.findBySpaceIdOrderByJoinedAtAsc(space.getId());
+        String memberOneName = members.isEmpty()
+                ? CoupleSpace.WAITING_MEMBER_NAME
+                : members.get(0).getUser().getDisplayName();
+        String memberTwoName = members.size() > 1
+                ? members.get(1).getUser().getDisplayName()
+                : CoupleSpace.WAITING_MEMBER_NAME;
+        space.updateMemberNames(memberOneName, memberTwoName);
     }
 
     private CoupleSpace requireMemberSpace(Long spaceId, AppUser user) {

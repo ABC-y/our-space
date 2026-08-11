@@ -13,6 +13,8 @@ import java.time.LocalDate;
 @Entity
 @Table(name = "couple_spaces")
 public class CoupleSpace {
+    public static final String WAITING_MEMBER_NAME = "等待加入";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -41,7 +43,7 @@ public class CoupleSpace {
     public CoupleSpace(String name, String memberOneName, LocalDate relationshipStartedOn, String inviteCode) {
         this.name = name;
         this.memberOneName = memberOneName;
-        this.memberTwoName = "等待加入";
+        this.memberTwoName = WAITING_MEMBER_NAME;
         this.relationshipStartedOn = relationshipStartedOn;
         this.inviteCode = inviteCode;
     }
@@ -63,6 +65,11 @@ public class CoupleSpace {
     }
 
     public void setMemberTwoName(String memberTwoName) {
+        this.memberTwoName = memberTwoName;
+    }
+
+    public void updateMemberNames(String memberOneName, String memberTwoName) {
+        this.memberOneName = memberOneName;
         this.memberTwoName = memberTwoName;
     }
 

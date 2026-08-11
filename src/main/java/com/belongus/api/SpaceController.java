@@ -12,8 +12,10 @@ import com.belongus.service.AuthService;
 import com.belongus.service.SpaceAccessService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,7 +28,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 
 @RestController
 @RequestMapping("/api")
@@ -35,6 +41,9 @@ public class SpaceController {
     private final LetterRepository letterRepository;
     private final AuthService authService;
     private final SpaceAccessService spaceAccessService;
+
+    @Value("${app.storage.location:uploads}")
+    private String storageLocation;
 
     public SpaceController(
             MemoryRepository memoryRepository,
@@ -103,13 +112,40 @@ public class SpaceController {
         if (!memory.getSpace().getId().equals(space.getId())) {
             throw new ForbiddenException("这条回忆不属于当前空间");
         }
+        String previousImageUrl = memory.getImageUrl();
+        String nextImageUrl = blankToNull(request.imageUrl());
         memory.update(
                 request.title().trim(),
                 request.content().trim(),
-                blankToNull(request.imageUrl()),
+                nextImageUrl,
                 request.occurredOn()
         );
-        return toMemoryResponse(memoryRepository.save(memory));
+        MemoryResponse response = toMemoryResponse(memoryRepository.save(memory));
+        if (!Objects.equals(previousImageUrl, nextImageUrl)) {
+            deleteStoredImageIfUnused(previousImageUrl);
+        }
+        return response;
+    }
+
+    @DeleteMapping("/memories/{memoryId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Transactional
+    public void deleteMemory(
+            @PathVariable Long memoryId,
+            @RequestParam Long spaceId,
+            HttpServletRequest servletRequest
+    ) {
+        AppUser user = authService.requireUser(servletRequest);
+        CoupleSpace space = spaceAccessService.requireMemberSpace(spaceId, user);
+        Memory memory = memoryRepository.findById(memoryId)
+                .orElseThrow(() -> new IllegalArgumentException("这条回忆已经不在这里了"));
+        if (!memory.getSpace().getId().equals(space.getId())) {
+            throw new ForbiddenException("这条回忆不属于当前空间");
+        }
+        String imageUrl = memory.getImageUrl();
+        memoryRepository.delete(memory);
+        memoryRepository.flush();
+        deleteStoredImageIfUnused(imageUrl);
     }
 
     @GetMapping("/letters")
@@ -139,19 +175,105 @@ public class SpaceController {
         return toLetterResponse(letterRepository.save(letter));
     }
 
+    @PatchMapping("/letters/{letterId}")
+    @Transactional
+    public LetterResponse updateLetter(
+            @PathVariable Long letterId,
+            @RequestParam Long spaceId,
+            @Valid @RequestBody LetterRequest request,
+            HttpServletRequest servletRequest
+    ) {
+        AppUser user = authService.requireUser(servletRequest);
+        Letter letter = requireLetterInSpace(letterId, spaceId, user);
+        letter.updateContent(request.content().trim());
+        return toLetterResponse(letterRepository.save(letter));
+    }
+
+    @DeleteMapping("/letters/{letterId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Transactional
+    public void deleteLetter(
+            @PathVariable Long letterId,
+            @RequestParam Long spaceId,
+            HttpServletRequest servletRequest
+    ) {
+        AppUser user = authService.requireUser(servletRequest);
+        Letter letter = requireLetterInSpace(letterId, spaceId, user);
+        letterRepository.delete(letter);
+    }
+
     @PostMapping("/letters/{letterId}/replies")
     @Transactional
     public LetterResponse reply(
             @PathVariable Long letterId,
+            @RequestParam Long spaceId,
             @Valid @RequestBody ReplyRequest request,
             HttpServletRequest servletRequest
     ) {
         AppUser user = authService.requireUser(servletRequest);
-        Letter letter = letterRepository.findById(letterId)
-                .orElseThrow(() -> new IllegalArgumentException("这封信已经不在这里了"));
-        spaceAccessService.requireMemberSpace(letter.getSpace().getId(), user);
+        Letter letter = requireLetterInSpace(letterId, spaceId, user);
         letter.addReply(new LetterReply(letter, user.getDisplayName(), request.content().trim()));
         return toLetterResponse(letterRepository.save(letter));
+    }
+
+    @PatchMapping("/letters/{letterId}/replies/{replyId}")
+    @Transactional
+    public LetterResponse updateReply(
+            @PathVariable Long letterId,
+            @PathVariable Long replyId,
+            @RequestParam Long spaceId,
+            @Valid @RequestBody ReplyRequest request,
+            HttpServletRequest servletRequest
+    ) {
+        AppUser user = authService.requireUser(servletRequest);
+        Letter letter = requireLetterInSpace(letterId, spaceId, user);
+        LetterReply reply = letter.findReply(replyId);
+        reply.updateContent(request.content().trim());
+        return toLetterResponse(letterRepository.save(letter));
+    }
+
+    @DeleteMapping("/letters/{letterId}/replies/{replyId}")
+    @Transactional
+    public LetterResponse deleteReply(
+            @PathVariable Long letterId,
+            @PathVariable Long replyId,
+            @RequestParam Long spaceId,
+            HttpServletRequest servletRequest
+    ) {
+        AppUser user = authService.requireUser(servletRequest);
+        Letter letter = requireLetterInSpace(letterId, spaceId, user);
+        letter.removeReply(letter.findReply(replyId));
+        return toLetterResponse(letterRepository.save(letter));
+    }
+
+    private Letter requireLetterInSpace(Long letterId, Long spaceId, AppUser user) {
+        CoupleSpace space = spaceAccessService.requireMemberSpace(spaceId, user);
+        Letter letter = letterRepository.findById(letterId)
+                .orElseThrow(() -> new IllegalArgumentException("这封信已经不在这里了"));
+        if (!letter.getSpace().getId().equals(space.getId())) {
+            throw new ForbiddenException("这封信不属于当前空间");
+        }
+        return letter;
+    }
+
+    private void deleteStoredImageIfUnused(String imageUrl) {
+        if (imageUrl == null || !imageUrl.startsWith("/api/uploads/") || memoryRepository.existsByImageUrl(imageUrl)) {
+            return;
+        }
+        String filename = imageUrl.substring("/api/uploads/".length());
+        if (filename.isBlank() || filename.contains("/") || filename.contains("\\") || filename.contains("..")) {
+            return;
+        }
+        Path directory = Path.of(storageLocation).toAbsolutePath().normalize();
+        Path file = directory.resolve(filename).normalize();
+        if (!file.startsWith(directory)) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException ignored) {
+            // A missing or locked image file should not stop the text record from being updated.
+        }
     }
 
     private SpaceResponse toSpaceResponse(CoupleSpace space) {

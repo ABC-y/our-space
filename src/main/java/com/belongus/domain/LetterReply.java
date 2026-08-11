@@ -41,6 +41,10 @@ public class LetterReply {
         this.content = content;
     }
 
+    public void updateContent(String content) {
+        this.content = content;
+    }
+
     public Long getId() {
         return id;
     }

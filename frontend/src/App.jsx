@@ -18,7 +18,9 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
+  Trash2,
   User,
+  UserMinus,
   UserRound,
   UsersRound,
   X,
@@ -120,6 +122,14 @@ export default function App() {
     void bootstrap();
   }, []);
 
+  useEffect(() => {
+    if (!notice) {
+      return undefined;
+    }
+    const timerId = window.setTimeout(() => setNotice(""), 2800);
+    return () => window.clearTimeout(timerId);
+  }, [notice]);
+
   async function refreshDashboard(message) {
     try {
       await loadDashboard(space);
@@ -157,6 +167,14 @@ export default function App() {
     setDashboard(null);
     setActiveView("home");
     setStage("auth");
+  }
+
+  function handleSpaceLeft() {
+    setDialog(null);
+    setSpace(null);
+    setDashboard(null);
+    setActiveView("home");
+    setStage("space");
   }
 
   if (stage === "loading") {
@@ -237,7 +255,12 @@ export default function App() {
           <MemoriesView memories={dashboard.memories} onOpenDialog={setDialog} onEditMemory={(memory) => setDialog({ type: "memory", memory })} />
         )}
         {activeView === "letters" && (
-          <LettersView letters={dashboard.letters} hasPartner={hasPartner} onOpenDialog={setDialog} onOpenLetter={openLetter} />
+          <LettersView
+            letters={dashboard.letters}
+            hasPartner={hasPartner}
+            onOpenDialog={setDialog}
+            onOpenLetter={openLetter}
+          />
         )}
         {activeView === "stories" && (
           <StoriesView
@@ -246,6 +269,7 @@ export default function App() {
             hasPartner={hasPartner}
             onCopyInvite={copyInviteCode}
             onEditMemory={(memory) => setDialog({ type: "memory", memory })}
+            onLeaveSpace={() => setDialog("leave-space")}
           />
         )}
 
@@ -268,8 +292,20 @@ export default function App() {
         <MemoryDialog spaceId={space.id} memory={dialog.memory} onClose={() => setDialog(null)} onSuccess={refreshDashboard} />
       )}
       {dialog === "letter" && <LetterDialog spaceId={space.id} onClose={() => setDialog(null)} onSuccess={refreshDashboard} />}
+      {dialog && typeof dialog === "object" && dialog.type === "letter" && (
+        <LetterDialog spaceId={space.id} letter={dialog.letter} onClose={() => setDialog(null)} onSuccess={refreshDashboard} />
+      )}
       {dialog && typeof dialog === "object" && dialog.type === "reply" && (
-        <ReplyDialog spaceId={space.id} letter={dialog.letter} onClose={() => setDialog(null)} onSuccess={refreshDashboard} />
+        <ReplyDialog
+          spaceId={space.id}
+          letter={dialog.letter}
+          onClose={() => setDialog(null)}
+          onEditLetter={() => setDialog({ type: "letter", letter: dialog.letter })}
+          onSuccess={refreshDashboard}
+        />
+      )}
+      {dialog === "leave-space" && (
+        <LeaveSpaceDialog space={space} onClose={() => setDialog(null)} onLeft={handleSpaceLeft} />
       )}
     </main>
   );
@@ -575,7 +611,7 @@ function LettersView({ letters, hasPartner, onOpenDialog, onOpenLetter }) {
   );
 }
 
-function StoriesView({ space, memories, hasPartner, onCopyInvite, onEditMemory }) {
+function StoriesView({ space, memories, hasPartner, onCopyInvite, onEditMemory, onLeaveSpace }) {
   return (
     <div className="screen-content list-view story-view">
       <section className="list-title">
@@ -604,6 +640,13 @@ function StoriesView({ space, memories, hasPartner, onCopyInvite, onEditMemory }
           ))}
         </div>
       )}
+      <section className="story-space-actions">
+        <div>
+          <p>想暂时离开这里？</p>
+          <span>退出不会删除已经写下的回忆、照片和悄悄话。</span>
+        </div>
+        <button type="button" onClick={onLeaveSpace}><UserMinus /> 退出空间</button>
+      </section>
     </div>
   );
 }
@@ -630,6 +673,7 @@ function MemoryDialog({ spaceId, memory, onClose, onSuccess }) {
     imageUrl: memory?.imageUrl || "",
   }));
   const [saving, setSaving] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const fileRef = useRef(null);
 
   function update(key, value) {
@@ -664,6 +708,19 @@ function MemoryDialog({ spaceId, memory, onClose, onSuccess }) {
     }
   }
 
+  async function deleteMemory() {
+    setSaving(true);
+    try {
+      await apiJson(`/memories/${memory.id}?spaceId=${spaceId}`, { method: "DELETE" });
+      onClose();
+      await onSuccess("这条回忆已从故事簿删除");
+    } catch (requestError) {
+      onSuccess(requestError.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <Dialog title={isEditing ? "编辑这段回忆" : "记录一件小事"} onClose={onClose}>
       <form className="form" onSubmit={submit}>
@@ -674,7 +731,26 @@ function MemoryDialog({ spaceId, memory, onClose, onSuccess }) {
         <button className="upload-field" type="button" onClick={() => fileRef.current?.click()}>
           {form.imageUrl ? <><Camera /> {isEditing ? "更换照片" : "已选择照片"}</> : <><ImagePlus /> 添加一张照片</>}
         </button>
+        {form.imageUrl && (
+          <div className="photo-preview">
+            <img src={imageUrl(form.imageUrl)} alt="回忆照片预览" />
+            <button type="button" onClick={() => update("imageUrl", "")}><X /> 移除照片</button>
+          </div>
+        )}
         <button className="submit-button" disabled={saving}>{saving ? "正在保存..." : isEditing ? "保存修改" : "收藏这段回忆"}</button>
+        {isEditing && (
+          <div className="danger-zone">
+            {confirmingDelete ? (
+              <>
+                <p>删除后无法恢复，照片也会一并移除。</p>
+                <div className="danger-actions">
+                  <button type="button" className="danger-button" onClick={() => void deleteMemory()} disabled={saving}><Trash2 /> 确认删除这条回忆</button>
+                  <button type="button" className="quiet-button" onClick={() => setConfirmingDelete(false)} disabled={saving}>先不删除</button>
+                </div>
+              </>
+            ) : <button type="button" className="danger-link" onClick={() => setConfirmingDelete(true)}><Trash2 /> 删除这条回忆</button>}
+          </div>
+        )}
       </form>
     </Dialog>
   );
@@ -711,20 +787,35 @@ function RelationshipDateDialog({ space, onClose, onSuccess }) {
   );
 }
 
-function LetterDialog({ spaceId, onClose, onSuccess }) {
-  const [content, setContent] = useState("");
+function LetterDialog({ spaceId, letter, onClose, onSuccess }) {
+  const isEditing = Boolean(letter);
+  const [content, setContent] = useState(letter?.content || "");
   const [saving, setSaving] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   async function submit(event) {
     event.preventDefault();
     setSaving(true);
     try {
-      await apiJson(`/letters?spaceId=${spaceId}`, {
-        method: "POST",
+      await apiJson(isEditing ? `/letters/${letter.id}?spaceId=${spaceId}` : `/letters?spaceId=${spaceId}`, {
+        method: isEditing ? "PATCH" : "POST",
         body: JSON.stringify({ content }),
       });
       onClose();
-      await onSuccess("这段话已经悄悄送出");
+      await onSuccess(isEditing ? "这段悄悄话已更新" : "这段话已经悄悄送出");
+    } catch (requestError) {
+      onSuccess(requestError.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteLetter() {
+    setSaving(true);
+    try {
+      await apiJson(`/letters/${letter.id}?spaceId=${spaceId}`, { method: "DELETE" });
+      onClose();
+      await onSuccess("这封悄悄话已删除");
     } catch (requestError) {
       onSuccess(requestError.message);
     } finally {
@@ -733,29 +824,65 @@ function LetterDialog({ spaceId, onClose, onSuccess }) {
   }
 
   return (
-    <Dialog title="写一段悄悄话" onClose={onClose}>
+    <Dialog title={isEditing ? "编辑这段悄悄话" : "写一段悄悄话"} onClose={onClose}>
       <form className="form" onSubmit={submit}>
         <label>想说的话<textarea value={content} onChange={(event) => setContent(event.target.value)} placeholder="这一次，不用急着说出口..." required rows="7" /></label>
-        <button className="submit-button" disabled={saving}>{saving ? "正在送出..." : "送出悄悄话"}</button>
+        <button className="submit-button" disabled={saving}>{saving ? "正在保存..." : isEditing ? "保存修改" : "送出悄悄话"}</button>
+        {isEditing && (
+          <div className="danger-zone">
+            {confirmingDelete ? (
+              <>
+                <p>删除后，信里的所有回应也会一并删除。</p>
+                <div className="danger-actions">
+                  <button type="button" className="danger-button" onClick={() => void deleteLetter()} disabled={saving}><Trash2 /> 确认删除这封信</button>
+                  <button type="button" className="quiet-button" onClick={() => setConfirmingDelete(false)} disabled={saving}>先不删除</button>
+                </div>
+              </>
+            ) : <button type="button" className="danger-link" onClick={() => setConfirmingDelete(true)}><Trash2 /> 删除这封悄悄话</button>}
+          </div>
+        )}
       </form>
     </Dialog>
   );
 }
 
-function ReplyDialog({ spaceId, letter, onClose, onSuccess }) {
+function ReplyDialog({ spaceId, letter, onClose, onEditLetter, onSuccess }) {
   const [content, setContent] = useState("");
   const [saving, setSaving] = useState(false);
+  const [editingReply, setEditingReply] = useState(null);
+  const [confirmingReplyId, setConfirmingReplyId] = useState(null);
+
+  function startEditingReply(reply) {
+    setEditingReply(reply);
+    setContent(reply.content);
+    setConfirmingReplyId(null);
+  }
 
   async function submit(event) {
     event.preventDefault();
     setSaving(true);
     try {
-      await apiJson(`/letters/${letter.id}/replies?spaceId=${spaceId}`, {
-        method: "POST",
+      await apiJson(editingReply
+        ? `/letters/${letter.id}/replies/${editingReply.id}?spaceId=${spaceId}`
+        : `/letters/${letter.id}/replies?spaceId=${spaceId}`, {
+        method: editingReply ? "PATCH" : "POST",
         body: JSON.stringify({ content }),
       });
       onClose();
-      await onSuccess("你的回应已经被好好收到");
+      await onSuccess(editingReply ? "这条回应已更新" : "你的回应已经被好好收到");
+    } catch (requestError) {
+      onSuccess(requestError.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteReply(replyId) {
+    setSaving(true);
+    try {
+      await apiJson(`/letters/${letter.id}/replies/${replyId}?spaceId=${spaceId}`, { method: "DELETE" });
+      onClose();
+      await onSuccess("这条回应已删除");
     } catch (requestError) {
       onSuccess(requestError.message);
     } finally {
@@ -766,13 +893,77 @@ function ReplyDialog({ spaceId, letter, onClose, onSuccess }) {
   return (
     <Dialog title={`来自 ${letter.senderName} 的悄悄话`} onClose={onClose}>
       <article className="dialog-letter">
+        <div className="dialog-letter-actions">
+          <span>想调整这封信？</span>
+          <button type="button" onClick={onEditLetter}><Pencil /> 编辑或删除</button>
+        </div>
         <p>{letter.content}</p>
-        {letter.replies.map((reply) => <div key={reply.id}><strong>{reply.authorName}</strong>{reply.content}</div>)}
+        {letter.replies.length > 0 && (
+          <div className="reply-list">
+            {letter.replies.map((reply) => (
+              <div className="reply-entry" key={reply.id}>
+                <strong>{reply.authorName}</strong>
+                <p>{reply.content}</p>
+                {confirmingReplyId === reply.id ? (
+                  <div className="reply-confirmation">
+                    <span>确定删除这条回应吗？</span>
+                    <button type="button" onClick={() => void deleteReply(reply.id)} disabled={saving}>确认删除</button>
+                    <button type="button" onClick={() => setConfirmingReplyId(null)} disabled={saving}>取消</button>
+                  </div>
+                ) : (
+                  <div className="reply-actions">
+                    <button type="button" onClick={() => startEditingReply(reply)}><Pencil /> 编辑</button>
+                    <button type="button" onClick={() => setConfirmingReplyId(reply.id)}><Trash2 /> 删除</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </article>
       <form className="form" onSubmit={submit}>
-        <label>写下回应<textarea value={content} onChange={(event) => setContent(event.target.value)} required placeholder="让对方知道你收到了..." rows="4" /></label>
-        <button className="submit-button" disabled={saving}>{saving ? "正在回应..." : "温柔地回应"}</button>
+        <label>{editingReply ? "修改回应" : "写下回应"}<textarea value={content} onChange={(event) => setContent(event.target.value)} required placeholder="让对方知道你收到了..." rows="4" /></label>
+        <button className="submit-button" disabled={saving}>{saving ? "正在保存..." : editingReply ? "保存回应" : "温柔地回应"}</button>
+        {editingReply && <button type="button" className="quiet-button" onClick={() => { setEditingReply(null); setContent(""); }}>取消编辑回应</button>}
       </form>
+    </Dialog>
+  );
+}
+
+function LeaveSpaceDialog({ space, onClose, onLeft }) {
+  const [confirmingLeave, setConfirmingLeave] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [message, setMessage] = useState("");
+
+  async function leaveSpace() {
+    setLeaving(true);
+    setMessage("");
+    try {
+      await apiJson(`/spaces/${space.id}/members/me`, { method: "DELETE" });
+      onLeft();
+    } catch (requestError) {
+      setMessage(requestError.message);
+    } finally {
+      setLeaving(false);
+    }
+  }
+
+  return (
+    <Dialog title="退出这个空间" onClose={onClose}>
+      <div className="leave-space-copy">
+        <UserMinus />
+        <p>退出后，你会回到创建或加入空间的页面。</p>
+        <span>这里的故事、照片和悄悄话不会被删除；以后仍可以用同一个邀请码重新加入。</span>
+      </div>
+      {message && <p className="form-message">{message}</p>}
+      <div className="leave-space-actions">
+        {confirmingLeave ? (
+          <>
+            <button type="button" className="danger-button" onClick={() => void leaveSpace()} disabled={leaving}><UserMinus /> {leaving ? "正在退出..." : "确认退出空间"}</button>
+            <button type="button" className="quiet-button" onClick={() => setConfirmingLeave(false)} disabled={leaving}>留在这里</button>
+          </>
+        ) : <button type="button" className="danger-link" onClick={() => setConfirmingLeave(true)}><UserMinus /> 我要退出空间</button>}
+      </div>
     </Dialog>
   );
 }

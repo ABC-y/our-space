@@ -60,6 +60,24 @@ public class Letter {
         status = "REPLIED";
     }
 
+    public void updateContent(String content) {
+        this.content = content;
+    }
+
+    public LetterReply findReply(Long replyId) {
+        return replies.stream()
+                .filter(reply -> reply.getId().equals(replyId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("这条回应已经不在这里了"));
+    }
+
+    public void removeReply(LetterReply reply) {
+        replies.remove(reply);
+        if (replies.isEmpty()) {
+            status = "SENT";
+        }
+    }
+
     public Long getId() {
         return id;
     }
