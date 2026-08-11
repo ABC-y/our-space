@@ -35,6 +35,19 @@ Railway MySQL 数据库       Railway 持久化磁盘
 
 Railway 的 MySQL 和持久化磁盘通常属于付费云资源。创建资源前请在 Railway 后台确认你当前套餐的价格和额度。
 
+### 私有仓库在 Railway 中搜不到怎么办
+
+不要为了让 Railway 搜到仓库而长期将项目设为公开。请按下面步骤授权 Railway 访问这个私有仓库：
+
+1. 在 GitHub 右上角头像中进入 **Settings**。
+2. 进入 **Applications**，再进入 **Installed GitHub Apps**。
+3. 找到 **Railway**，点击右侧的 **Configure**。
+4. 在 Repository access 中选择 **Only select repositories**。
+5. 选中 `our-space`，保存。
+6. 回到 Railway 的项目画布，在后端服务的 **Settings** 中找到 **Service Source**，点击 **Connect Repo**，重新选择 `our-space`。
+
+完成后可以把 GitHub 仓库重新改回 **Private**。如果 Railway 已经成功连接了仓库，改回私有不会影响已连接的服务，只要 Railway App 仍有该仓库的访问权限。
+
 ## 1. 将项目上传到 GitHub
 
 1. 在浏览器打开 `https://github.com/new`。
@@ -84,17 +97,18 @@ git config --global user.email "你的邮箱@example.com"
 2. 选择 **GitHub Repo** 或 **Deploy from GitHub repo**。
 3. 选择刚才创建的私有 `belong-us` 仓库。
 4. 如果 Railway 要求 GitHub 权限，只授权这个仓库即可。
-5. 点击新建的 Java 服务，进入 **Settings**。
-6. 在构建设置中确认：
+5. 回到 Railway 项目画布，点击代表 `our-space` 的服务卡片，再进入这个服务自己的 **Settings**。不要点击项目级别的齿轮设置。
+6. 不需要手动寻找或填写“构建设置”。仓库根目录已经有名称完全正确的 `Dockerfile`，并且项目根目录的 `railway.json` 已指定 Dockerfile 构建和健康检查。
+7. 打开该服务的 **Deployments**，查看最新部署日志。正确时会出现：
 
 ```text
-Root Directory：留空，表示仓库根目录
-Builder：Dockerfile
-Dockerfile Path：Dockerfile
+Using detected Dockerfile!
 ```
 
-7. 不需要填写 Start Command，项目中的 Dockerfile 已经定义了启动 Java 的方式。
-8. 如果 Railway 允许选择部署地区，请选择你们两个人都较近的地区。对于亚洲用户，优先选择后台提供的亚洲或亚太地区。
+8. 不需要填写 Start Command，项目中的 Dockerfile 已经定义了启动 Java 的方式。
+9. 如果 Railway 允许选择部署地区，请选择你们两个人都较近的地区。对于亚洲用户，优先选择后台提供的亚洲或亚太地区。
+
+如果项目画布中没有 `our-space` 服务卡片，表示目前只有 Railway 项目、还没有创建后端服务。请在画布右上角点击 **New**，选择 **GitHub Repo**，再选择 `our-space`。
 
 ### 为照片添加持久化磁盘
 
@@ -133,24 +147,19 @@ CORS_ALLOWED_ORIGIN_PATTERNS=https://*.vercel.app
 - Railway 的变量编辑器中不要额外添加英文双引号。
 - `CORS_ALLOWED_ORIGIN_PATTERNS` 先用 `https://*.vercel.app`，第 5 节中会收紧成你自己的 Vercel 网址。
 
-### 添加健康检查和后端公网域名
+### 添加后端公网域名
 
-1. 仍然在 Java 服务的 **Settings** 中，找到 **Healthcheck Path**。
-2. 填写：
+健康检查路径已经由项目中的 `railway.json` 固定为 `/api/health`，不需要在当前 Railway 界面中手动寻找 Healthcheck Path。
 
-```text
-/api/health
-```
-
-3. 找到 **Networking**，点击 **Generate Domain**。
-4. 复制生成的后端网址，格式类似：
+1. 仍然在 Java 服务自己的 **Settings** 中，找到 **Networking**，点击 **Generate Domain**。
+2. 复制生成的后端网址，格式类似：
 
 ```text
 https://belong-us-production-abcd.up.railway.app
 ```
 
-5. 等待最新部署变成绿色或成功状态。
-6. 在浏览器打开：
+3. 等待最新部署变成绿色或成功状态。
+4. 在浏览器打开：
 
 ```text
 https://你的Railway域名.up.railway.app/api/health
