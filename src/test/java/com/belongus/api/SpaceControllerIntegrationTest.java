@@ -51,6 +51,17 @@ class SpaceControllerIntegrationTest {
         assertThat(createdSpace.getBody()).isNotNull();
         Long spaceId = createdSpace.getBody().id();
 
+        ResponseEntity<SpaceController.BootstrapResponse> bootstrap = restTemplate.exchange(
+                "/api/bootstrap",
+                HttpMethod.GET,
+                new HttpEntity<>(headersWithCookie(cookieValue)),
+                SpaceController.BootstrapResponse.class
+        );
+        assertThat(bootstrap.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(bootstrap.getBody()).isNotNull();
+        assertThat(bootstrap.getBody().user().username()).isEqualTo("test_user");
+        assertThat(bootstrap.getBody().space().id()).isEqualTo(spaceId);
+
         Map<String, Object> memoryRequest = Map.of(
                 "title", "数据库连接验证",
                 "content", "这条回忆由集成测试写入并读取。",

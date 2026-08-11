@@ -8,6 +8,7 @@ import com.belongus.domain.Memory;
 import com.belongus.domain.SpaceMember;
 import com.belongus.repository.LetterRepository;
 import com.belongus.repository.MemoryRepository;
+import com.belongus.repository.SpaceMemberRepository;
 import com.belongus.service.AuthService;
 import com.belongus.service.SpaceAccessService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -39,6 +40,7 @@ import java.util.Objects;
 public class SpaceController {
     private final MemoryRepository memoryRepository;
     private final LetterRepository letterRepository;
+    private final SpaceMemberRepository memberRepository;
     private final AuthService authService;
     private final SpaceAccessService spaceAccessService;
 
@@ -48,13 +50,39 @@ public class SpaceController {
     public SpaceController(
             MemoryRepository memoryRepository,
             LetterRepository letterRepository,
+            SpaceMemberRepository memberRepository,
             AuthService authService,
             SpaceAccessService spaceAccessService
     ) {
         this.memoryRepository = memoryRepository;
         this.letterRepository = letterRepository;
+        this.memberRepository = memberRepository;
         this.authService = authService;
         this.spaceAccessService = spaceAccessService;
+    }
+
+    @GetMapping("/bootstrap")
+    @Transactional(readOnly = true)
+    public BootstrapResponse bootstrap(HttpServletRequest request) {
+        AppUser user = authService.requireUser(request);
+        AuthController.AuthResponse userResponse = new AuthController.AuthResponse(
+                user.getId(),
+                user.getUsername(),
+                user.getDisplayName()
+        );
+        SpaceMember membership = memberRepository.findByUserIdOrderByJoinedAtDesc(user.getId()).stream()
+                .findFirst()
+                .orElse(null);
+        if (membership == null) {
+            return new BootstrapResponse(userResponse, null, List.of(), List.of());
+        }
+
+        CoupleSpace space = membership.getSpace();
+        List<MemoryResponse> memories = memoryRepository.findBySpaceIdOrderByOccurredOnDescCreatedAtDesc(space.getId())
+                .stream().map(this::toMemoryResponse).toList();
+        List<LetterResponse> letters = letterRepository.findBySpaceIdOrderByCreatedAtDesc(space.getId())
+                .stream().map(this::toLetterResponse).toList();
+        return new BootstrapResponse(userResponse, toSpaceResponse(space), memories, letters);
     }
 
     @GetMapping("/dashboard")
@@ -322,6 +350,14 @@ public class SpaceController {
     }
 
     public record DashboardResponse(SpaceResponse space, List<MemoryResponse> memories, List<LetterResponse> letters) {
+    }
+
+    public record BootstrapResponse(
+            AuthController.AuthResponse user,
+            SpaceResponse space,
+            List<MemoryResponse> memories,
+            List<LetterResponse> letters
+    ) {
     }
 
     public record SpaceResponse(

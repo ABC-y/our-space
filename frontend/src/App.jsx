@@ -77,6 +77,87 @@ function imageUrl(url) {
   return url?.startsWith("/") ? `${SERVER_BASE}${url}` : url;
 }
 
+async function prepareUpload(file) {
+  const maxBytes = 2 * 1024 * 1024;
+  const maxDimension = 1920;
+  if (file.size <= maxBytes || !window.createImageBitmap) {
+    return file;
+  }
+
+  const bitmap = await window.createImageBitmap(file);
+  const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/webp", 0.82));
+  if (!blob || blob.size >= file.size) {
+    return file;
+  }
+  return new File([blob], `${file.name.replace(/\.[^.]+$/, "")}.webp`, { type: "image/webp" });
+}
+
+function withUpdatedSpace(currentSpace, nextSpace) {
+  if (!currentSpace) {
+    return nextSpace;
+  }
+  const startedAt = new Date(`${nextSpace.relationshipStartedOn}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const daysTogether = Math.max(1, Math.floor((today - startedAt) / 86_400_000) + 1);
+  return { ...currentSpace, ...nextSpace, daysTogether };
+}
+
+function applyDashboardMutation(currentDashboard, mutation) {
+  if (!currentDashboard || !mutation) {
+    return currentDashboard;
+  }
+
+  if (mutation.type === "space-updated") {
+    return { ...currentDashboard, space: withUpdatedSpace(currentDashboard.space, mutation.space) };
+  }
+  if (mutation.type === "memory-created") {
+    const memories = [mutation.memory, ...currentDashboard.memories.filter((item) => item.id !== mutation.memory.id)]
+      .sort((a, b) => b.occurredOn.localeCompare(a.occurredOn));
+    return { ...currentDashboard, memories };
+  }
+  if (mutation.type === "memory-updated") {
+    return {
+      ...currentDashboard,
+      memories: currentDashboard.memories
+        .map((item) => item.id === mutation.memory.id ? mutation.memory : item)
+        .sort((a, b) => b.occurredOn.localeCompare(a.occurredOn)),
+    };
+  }
+  if (mutation.type === "memory-deleted") {
+    return {
+      ...currentDashboard,
+      memories: currentDashboard.memories.filter((item) => item.id !== mutation.id),
+    };
+  }
+  if (mutation.type === "letter-created") {
+    return {
+      ...currentDashboard,
+      letters: [mutation.letter, ...currentDashboard.letters.filter((item) => item.id !== mutation.letter.id)],
+    };
+  }
+  if (mutation.type === "letter-updated" || mutation.type === "letter-replied") {
+    return {
+      ...currentDashboard,
+      letters: currentDashboard.letters.map((item) => item.id === mutation.letter.id ? mutation.letter : item),
+    };
+  }
+  if (mutation.type === "letter-deleted") {
+    return {
+      ...currentDashboard,
+      letters: currentDashboard.letters.filter((item) => item.id !== mutation.id),
+    };
+  }
+  return currentDashboard;
+}
+
 export default function App() {
   const [stage, setStage] = useState("loading");
   const [user, setUser] = useState(null);
@@ -86,6 +167,7 @@ export default function App() {
   const [dialog, setDialog] = useState(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const didBootstrap = useRef(false);
 
   async function loadDashboard(nextSpace) {
     const data = await apiJson(`/dashboard?spaceId=${nextSpace.id}`);
@@ -93,21 +175,31 @@ export default function App() {
     setDashboard(data);
   }
 
-  async function continueAfterAuth(nextUser) {
+  function applyBootstrap(data, fallbackUser) {
+    const nextUser = data.user || fallbackUser;
     setUser(nextUser);
-    const spaces = await apiJson("/spaces");
-    if (spaces.length === 0) {
+    if (!data.space) {
       setStage("space");
       return;
     }
-    await loadDashboard(spaces[0]);
+    setSpace(data.space);
+    setDashboard({
+      space: data.space,
+      memories: data.memories,
+      letters: data.letters,
+    });
     setStage("app");
+  }
+
+  async function continueAfterAuth(nextUser) {
+    const data = await apiJson("/bootstrap");
+    applyBootstrap(data, nextUser);
   }
 
   async function bootstrap() {
     try {
-      const currentUser = await apiJson("/auth/me");
-      await continueAfterAuth(currentUser);
+      const data = await apiJson("/bootstrap");
+      applyBootstrap(data, data.user);
     } catch (requestError) {
       if (requestError instanceof ApiError && requestError.status === 401) {
         setStage("auth");
@@ -119,6 +211,10 @@ export default function App() {
   }
 
   useEffect(() => {
+    if (didBootstrap.current) {
+      return;
+    }
+    didBootstrap.current = true;
     void bootstrap();
   }, []);
 
@@ -130,7 +226,15 @@ export default function App() {
     return () => window.clearTimeout(timerId);
   }, [notice]);
 
-  async function refreshDashboard(message) {
+  async function refreshDashboard(message, mutation) {
+    if (mutation) {
+      if (mutation.type === "space-updated") {
+        setSpace((current) => withUpdatedSpace(current, mutation.space));
+      }
+      setDashboard((current) => applyDashboardMutation(current, mutation));
+      setNotice(message);
+      return;
+    }
     try {
       await loadDashboard(space);
       setNotice(message);
@@ -510,7 +614,7 @@ function HomeView({ space, memory, letter, hasPartner, onOpenDialog, onEditRelat
       </section>
 
       <article className="featured-memory">
-        {memory?.imageUrl ? <img src={imageUrl(memory.imageUrl)} alt="" /> : <div className="featured-placeholder"><Heart fill="currentColor" /></div>}
+        {memory?.imageUrl ? <img src={imageUrl(memory.imageUrl)} alt="" decoding="async" /> : <div className="featured-placeholder"><Heart fill="currentColor" /></div>}
         <div className="photo-glow" />
         <div className="memory-copy">
           <p>{memory ? formatDate(memory.occurredOn) : "今天"}</p>
@@ -567,7 +671,7 @@ function MemoriesView({ memories, onOpenDialog, onEditMemory }) {
         <div className="memory-grid">
           {memories.map((memory) => (
             <article className="memory-tile" key={memory.id}>
-              {memory.imageUrl ? <img src={imageUrl(memory.imageUrl)} alt="" /> : <div className="memory-image-placeholder"><Camera /></div>}
+              {memory.imageUrl ? <img src={imageUrl(memory.imageUrl)} alt="" loading="lazy" decoding="async" /> : <div className="memory-image-placeholder"><Camera /></div>}
               <div className="memory-tile-copy">
                 <p>{formatDate(memory.occurredOn)} · {memory.authorName}</p>
                 <h3>{memory.title}</h3>
@@ -674,6 +778,8 @@ function MemoryDialog({ spaceId, memory, onClose, onSuccess }) {
   }));
   const [saving, setSaving] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState("");
   const fileRef = useRef(null);
 
   function update(key, value) {
@@ -681,13 +787,18 @@ function MemoryDialog({ spaceId, memory, onClose, onSuccess }) {
   }
 
   async function uploadFile(file) {
+    setUploading(true);
+    setUploadMessage("");
     try {
+      const preparedFile = await prepareUpload(file);
       const upload = new FormData();
-      upload.append("file", file);
+      upload.append("file", preparedFile);
       const result = await apiJson(`/uploads?spaceId=${spaceId}`, { method: "POST", body: upload });
       update("imageUrl", result.url);
     } catch (requestError) {
-      onSuccess(requestError.message);
+      setUploadMessage(requestError.message);
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -695,12 +806,15 @@ function MemoryDialog({ spaceId, memory, onClose, onSuccess }) {
     event.preventDefault();
     setSaving(true);
     try {
-      await apiJson(isEditing ? `/memories/${memory.id}?spaceId=${spaceId}` : `/memories?spaceId=${spaceId}`, {
+      const savedMemory = await apiJson(isEditing ? `/memories/${memory.id}?spaceId=${spaceId}` : `/memories?spaceId=${spaceId}`, {
         method: isEditing ? "PATCH" : "POST",
         body: JSON.stringify(form),
       });
       onClose();
-      await onSuccess(isEditing ? "这条回忆已更新" : "新的回忆已经收进故事簿");
+      await onSuccess(
+        isEditing ? "这条回忆已更新" : "新的回忆已经收进故事簿",
+        { type: isEditing ? "memory-updated" : "memory-created", memory: savedMemory }
+      );
     } catch (requestError) {
       onSuccess(requestError.message);
     } finally {
@@ -713,7 +827,7 @@ function MemoryDialog({ spaceId, memory, onClose, onSuccess }) {
     try {
       await apiJson(`/memories/${memory.id}?spaceId=${spaceId}`, { method: "DELETE" });
       onClose();
-      await onSuccess("这条回忆已从故事簿删除");
+      await onSuccess("这条回忆已从故事簿删除", { type: "memory-deleted", id: memory.id });
     } catch (requestError) {
       onSuccess(requestError.message);
     } finally {
@@ -728,9 +842,10 @@ function MemoryDialog({ spaceId, memory, onClose, onSuccess }) {
         <label>那天的故事<textarea value={form.content} onChange={(event) => update("content", event.target.value)} placeholder="写下你想记住的片段..." required rows="4" /></label>
         <label>发生日期<input type="date" value={form.occurredOn} onChange={(event) => update("occurredOn", event.target.value)} required /></label>
         <input ref={fileRef} className="visually-hidden" type="file" accept="image/*" onChange={(event) => event.target.files[0] && void uploadFile(event.target.files[0])} />
-        <button className="upload-field" type="button" onClick={() => fileRef.current?.click()}>
-          {form.imageUrl ? <><Camera /> {isEditing ? "更换照片" : "已选择照片"}</> : <><ImagePlus /> 添加一张照片</>}
+        <button className="upload-field" type="button" onClick={() => fileRef.current?.click()} disabled={uploading}>
+          {uploading ? <><Camera /> 正在处理照片...</> : form.imageUrl ? <><Camera /> {isEditing ? "更换照片" : "已选择照片"}</> : <><ImagePlus /> 添加一张照片</>}
         </button>
+        {uploadMessage && <p className="form-message">{uploadMessage}</p>}
         {form.imageUrl && (
           <div className="photo-preview">
             <img src={imageUrl(form.imageUrl)} alt="回忆照片预览" />
@@ -764,12 +879,12 @@ function RelationshipDateDialog({ space, onClose, onSuccess }) {
     event.preventDefault();
     setSaving(true);
     try {
-      await apiJson(`/spaces/${space.id}`, {
+      const updatedSpace = await apiJson(`/spaces/${space.id}`, {
         method: "PATCH",
         body: JSON.stringify({ relationshipStartedOn }),
       });
       onClose();
-      await onSuccess("关系开始日期已更新");
+      await onSuccess("关系开始日期已更新", { type: "space-updated", space: updatedSpace });
     } catch (requestError) {
       onSuccess(requestError.message);
     } finally {
@@ -797,12 +912,15 @@ function LetterDialog({ spaceId, letter, onClose, onSuccess }) {
     event.preventDefault();
     setSaving(true);
     try {
-      await apiJson(isEditing ? `/letters/${letter.id}?spaceId=${spaceId}` : `/letters?spaceId=${spaceId}`, {
+      const savedLetter = await apiJson(isEditing ? `/letters/${letter.id}?spaceId=${spaceId}` : `/letters?spaceId=${spaceId}`, {
         method: isEditing ? "PATCH" : "POST",
         body: JSON.stringify({ content }),
       });
       onClose();
-      await onSuccess(isEditing ? "这段悄悄话已更新" : "这段话已经悄悄送出");
+      await onSuccess(
+        isEditing ? "这段悄悄话已更新" : "这段话已经悄悄送出",
+        { type: isEditing ? "letter-updated" : "letter-created", letter: savedLetter }
+      );
     } catch (requestError) {
       onSuccess(requestError.message);
     } finally {
@@ -815,7 +933,7 @@ function LetterDialog({ spaceId, letter, onClose, onSuccess }) {
     try {
       await apiJson(`/letters/${letter.id}?spaceId=${spaceId}`, { method: "DELETE" });
       onClose();
-      await onSuccess("这封悄悄话已删除");
+      await onSuccess("这封悄悄话已删除", { type: "letter-deleted", id: letter.id });
     } catch (requestError) {
       onSuccess(requestError.message);
     } finally {
@@ -862,14 +980,17 @@ function ReplyDialog({ spaceId, letter, onClose, onEditLetter, onSuccess }) {
     event.preventDefault();
     setSaving(true);
     try {
-      await apiJson(editingReply
+      const updatedLetter = await apiJson(editingReply
         ? `/letters/${letter.id}/replies/${editingReply.id}?spaceId=${spaceId}`
         : `/letters/${letter.id}/replies?spaceId=${spaceId}`, {
         method: editingReply ? "PATCH" : "POST",
         body: JSON.stringify({ content }),
       });
       onClose();
-      await onSuccess(editingReply ? "这条回应已更新" : "你的回应已经被好好收到");
+      await onSuccess(
+        editingReply ? "这条回应已更新" : "你的回应已经被好好收到",
+        { type: "letter-replied", letter: updatedLetter }
+      );
     } catch (requestError) {
       onSuccess(requestError.message);
     } finally {
@@ -880,9 +1001,9 @@ function ReplyDialog({ spaceId, letter, onClose, onEditLetter, onSuccess }) {
   async function deleteReply(replyId) {
     setSaving(true);
     try {
-      await apiJson(`/letters/${letter.id}/replies/${replyId}?spaceId=${spaceId}`, { method: "DELETE" });
+      const updatedLetter = await apiJson(`/letters/${letter.id}/replies/${replyId}?spaceId=${spaceId}`, { method: "DELETE" });
       onClose();
-      await onSuccess("这条回应已删除");
+      await onSuccess("这条回应已删除", { type: "letter-replied", letter: updatedLetter });
     } catch (requestError) {
       onSuccess(requestError.message);
     } finally {

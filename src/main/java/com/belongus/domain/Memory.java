@@ -6,6 +6,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
@@ -14,7 +15,10 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "memories")
+@Table(name = "memories", indexes = {
+        @Index(name = "idx_memories_space_occurred", columnList = "space_id,occurred_on,created_at"),
+        @Index(name = "idx_memories_image_url", columnList = "image_url")
+})
 public class Memory {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

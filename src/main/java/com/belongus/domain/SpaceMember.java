@@ -6,6 +6,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
@@ -16,7 +17,11 @@ import java.time.LocalDateTime;
 @Entity
 @Table(
         name = "space_members",
-        uniqueConstraints = @UniqueConstraint(name = "uk_space_member", columnNames = {"space_id", "user_id"})
+        uniqueConstraints = @UniqueConstraint(name = "uk_space_member", columnNames = {"space_id", "user_id"}),
+        indexes = {
+                @Index(name = "idx_space_members_user_joined", columnList = "user_id,joined_at"),
+                @Index(name = "idx_space_members_space_joined", columnList = "space_id,joined_at")
+        }
 )
 public class SpaceMember {
     @Id
